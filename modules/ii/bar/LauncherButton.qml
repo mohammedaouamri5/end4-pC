@@ -22,16 +22,19 @@ RippleButton {
     colBackgroundToggled: "transparent"
     colBackgroundToggledHover: Appearance.colors.colSecondaryContainerHover
     colRippleToggled: Appearance.colors.colSecondaryContainerActive
-    toggled: GlobalStates.overviewOpen
+    toggled: Config.options.launcher.enable ? GlobalStates.launcherOpen : GlobalStates.overviewOpen
 
     onPressed: {
-        GlobalStates.overviewOpen = !GlobalStates.overviewOpen;
+        if (Config.options.launcher.enable)
+            LauncherController.toggle();
+        else
+            GlobalStates.overviewOpen = !GlobalStates.overviewOpen;
     }
 
     MaterialSymbol {
         anchors.centerIn: parent
         iconSize: 18
-        text: "search"
+        text: Config.options.launcher.enable ? "apps" : "search"
         color: root.contentColor
     }
 }

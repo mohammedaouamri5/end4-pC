@@ -719,7 +719,33 @@ Singleton {
             }
 
             property JsonObject launcher: JsonObject {
+                property bool enable: true
+                property string style: "material" // classic, material, glass, spotlight, grid, terminal, split
+                property string position: "top" // top, center
+                property int width: 640
+                property int maxResults: 10
+                property bool closeOnPick: true
+                property bool keepQuery: false
+                property bool showPinnedApps: true
+                property bool showRecentApps: true
+                property bool showDescriptions: true
+                property bool dimBackground: true
+                property real dimAmount: 0.22
+                property bool blurBackground: true
                 property list<string> pinnedApps: [ "org.kde.dolphin", "kitty", "cmake-gui"]
+                property JsonObject sources: JsonObject {
+                    property bool apps: true
+                    property bool windows: true
+                    property bool clipboard: true
+                    property bool emojis: true
+                    property bool symbols: true
+                    property bool math: true
+                    property bool shellCommand: true
+                    property bool webSearch: true
+                    property bool settings: true
+                    property bool keybinds: true
+                    property bool actions: true
+                }
             }
 
             property JsonObject light: JsonObject {

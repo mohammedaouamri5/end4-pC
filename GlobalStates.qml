@@ -21,6 +21,8 @@ Singleton {
     property bool settingsOpen: false
     property bool osdVolumeOpen: false
     property bool oskOpen: false
+    property bool launcherOpen: false
+    property var launcherScreen: null
     property bool overlayOpen: false
     property bool overviewOpen: false
     property bool regionSelectorOpen: false
@@ -102,6 +104,7 @@ Singleton {
         { displayName: Translation.tr("Left Sidebar"),           value: "sidebarLeftOpen" },
         { displayName: Translation.tr("Right Sidebar"),          value: "sidebarRightOpen" },
         { displayName: Translation.tr("Overview Launcher"),               value: "overviewOpen" },
+        { displayName: Translation.tr("App Launcher"),                    value: "launcherOpen" },
         { displayName: Translation.tr("Wallpaper Selector"),     value: "wallpaperSelectorOpen" },
         { displayName: Translation.tr("Media Controls"),         value: "mediaControlsOpen" },
         { displayName: Translation.tr("Overlay"),                value: "overlayOpen" },
@@ -114,6 +117,12 @@ Singleton {
 
     function toggleState(name) {
         if (!name || name === "none") return;
+        // The launcher has its own controller (it needs to reset the query and
+        // pick the target screen), so route it there instead of flipping the flag.
+        if (name === "launcherOpen") {
+            LauncherController.toggle();
+            return;
+        }
         root[name] = !root[name];
     }
     

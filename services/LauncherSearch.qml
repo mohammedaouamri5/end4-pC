@@ -9,12 +9,20 @@ import Qt.labs.folderlistmodel
 import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
+import Quickshell.Wayland
 import ".."
 
 Singleton {
     id: root
 
     property string query: ""
+    property string surface: "overview" // overview | launcher
+
+    function sourceEnabled(name) {
+        if (root.surface !== "launcher")
+            return true
+        return Config.options.launcher.sources?.[name] ?? true
+    }
 
     function ensurePrefix(prefix) {
         if ([Config.options.search.prefix.action, Config.options.search.prefix.app, Config.options.search.prefix.clipboard, Config.options.search.prefix.emojis, Config.options.search.prefix.symbols, Config.options.search.prefix.math, Config.options.search.prefix.shellCommand, Config.options.search.prefix.webSearch,].some(i => root.query.startsWith(i))) {
@@ -218,7 +226,7 @@ Singleton {
             return [];
 
         ///////////// Special cases ///////////////
-        if (root.query.startsWith(Config.options.search.prefix.clipboard)) {
+        if (root.sourceEnabled("clipboard") && root.query.startsWith(Config.options.search.prefix.clipboard)) {
             // Clipboard
             const searchString = StringUtils.cleanPrefix(root.query, Config.options.search.prefix.clipboard);
             const clipboardResults = Cliphist.fuzzyQuery(searchString).map((entry, index, array) => {
@@ -277,7 +285,7 @@ Singleton {
                 })]
             }));
             return [...lostPins, ...clipboardResults.filter(result => result.pinned), ...clipboardResults.filter(result => !result.pinned)];
-        } else if (root.query.startsWith(Config.options.search.prefix.emojis)) {
+        } else if (root.sourceEnabled("emojis") && root.query.startsWith(Config.options.search.prefix.emojis)) {
             // Emojis
             const searchString = StringUtils.cleanPrefix(root.query, Config.options.search.prefix.emojis);
             return Emojis.fuzzyQuery(searchString).map(entry => {
@@ -294,7 +302,7 @@ Singleton {
                     }
                 });
             }).filter(Boolean);
-        } else if (root.query.startsWith(Config.options.search.prefix.keybinds ?? "<")) {
+        } else if (root.sourceEnabled("keybinds") && root.query.startsWith(Config.options.search.prefix.keybinds ?? "<")) {
             // Keybinds
             const searchString = StringUtils.cleanPrefix(root.query, Config.options.search.prefix.keybinds ?? "<");
             const flatBinds = (function flatten(node) {
@@ -325,7 +333,7 @@ Singleton {
                     }
                 });
             }).filter(Boolean);
-        } else if (root.query.startsWith(Config.options.search.prefix.symbols)) {
+        } else if (root.sourceEnabled("symbols") && root.query.startsWith(Config.options.search.prefix.symbols)) {
             // Material Symbols
             const searchString = StringUtils.cleanPrefix(root.query, Config.options.search.prefix.symbols);
             return MaterialSymbolsSearch.fuzzyQuery(searchString).map(entry => {
@@ -349,7 +357,7 @@ Singleton {
 
         ////////////////// Init ///////////////////
         nonAppResultsTimer.restart();
-        const mathResultObject = resultComp.createObject(null, {
+        const mathResultObject = root.sourceEnabled("math") ? resultComp.createObject(null, {
             name: root.mathResult,
             verb: Translation.tr("Copy"),
             type: Translation.tr("Math result"),
@@ -359,8 +367,8 @@ Singleton {
             execute: () => {
                 Quickshell.clipboardText = root.mathResult;
             }
-        });
-        const appResultObjects = AppSearch.fuzzyQuery(StringUtils.cleanPrefix(root.query, Config.options.search.prefix.app)).map(entry => {
+        }) : null;
+        const appResultObjects = root.sourceEnabled("apps") ? AppSearch.fuzzyQuery(StringUtils.cleanPrefix(root.query, Config.options.search.prefix.app)).map(entry => {
             return resultComp.createObject(null, {
                 type: Translation.tr("App"),
                 id: entry.id,
@@ -395,9 +403,33 @@ Singleton {
                     });
                 })
             });
-        });
+        }) : [];
+
+        ////////////////// Windows //////////////////
+        const windowQuery = StringUtils.cleanPrefix(root.query, Config.options.search.prefix.app).toLowerCase();
+        const windowResultObjects = (root.surface === "launcher" && root.sourceEnabled("windows"))
+            ? ToplevelManager.toplevels.values
+                .filter(toplevel => {
+                    const title = String(toplevel.title ?? "").toLowerCase();
+                    const appId = String(toplevel.appId ?? "").toLowerCase();
+                    return windowQuery.length === 0 || title.includes(windowQuery) || appId.includes(windowQuery);
+                })
+                .slice(0, 5)
+                .map(toplevel => resultComp.createObject(null, {
+                    name: toplevel.title || toplevel.appId || Translation.tr("Window"),
+                    comment: toplevel.appId ?? "",
+                    verb: Translation.tr("Focus"),
+                    type: Translation.tr("Window"),
+                    iconName: AppSearch.guessIcon(toplevel.appId ?? ""),
+                    iconType: LauncherSearchResult.IconType.System,
+                    execute: () => toplevel.activate()
+                }))
+            : [];
+
         ////////////////// Settings search //////////////////
-        const settingsEntries = Config.options.settings.style === "dashboard" ? [] : SettingsSearchIndex.search(root.query, 8);
+        const settingsEntries = (root.sourceEnabled("settings") && Config.options.settings.style !== "dashboard")
+            ? SettingsSearchIndex.search(root.query, 8)
+            : [];
         const settingsResults = settingsEntries.map(entry => {
             const breadcrumb = entry.kind === "page" ? Translation.tr("Settings") : [entry.pageName, entry.kind === "option" ? entry.section : "", entry.kind === "option" ? entry.subsection : ""].filter(part => part).join(" › ");
             return resultComp.createObject(null, {
@@ -414,7 +446,7 @@ Singleton {
                 }
             });
         });
-        const commandResultObject = resultComp.createObject(null, {
+        const commandResultObject = root.sourceEnabled("shellCommand") ? resultComp.createObject(null, {
             name: StringUtils.cleanPrefix(root.query, Config.options.search.prefix.shellCommand).replace("file://", ""),
             verb: Translation.tr("Run"),
             type: Translation.tr("Command"),
@@ -429,8 +461,8 @@ Singleton {
                 }
                 Quickshell.execDetached(["bash", "-c", root.query.startsWith('sudo') ? `${Config.options.apps.terminal} fish -C '${cleanedCommand}'` : cleanedCommand]);
             }
-        });
-        const webSearchResultObject = resultComp.createObject(null, {
+        }) : null;
+        const webSearchResultObject = root.sourceEnabled("webSearch") ? resultComp.createObject(null, {
             name: StringUtils.cleanPrefix(root.query, Config.options.search.prefix.webSearch),
             verb: Translation.tr("Search"),
             type: Translation.tr("Web search"),
@@ -444,8 +476,8 @@ Singleton {
                 }
                 Qt.openUrlExternally(url);
             }
-        });
-        const launcherActionObjects = root.allActions.map(action => {
+        }) : null;
+        const launcherActionObjects = root.sourceEnabled("actions") ? root.allActions.map(action => {
             const actionString = `${Config.options.search.prefix.action}${action.action}`;
             if (actionString.startsWith(root.query) || root.query.startsWith(actionString)) {
                 return resultComp.createObject(null, {
@@ -460,7 +492,7 @@ Singleton {
                 });
             }
             return null;
-        }).filter(Boolean);
+        }).filter(Boolean) : [];
 
         //////// Prioritized by prefix /////////
         let result = [];
@@ -468,16 +500,18 @@ Singleton {
         const startsWithMathPrefix = root.query.startsWith(Config.options.search.prefix.math);
         const startsWithShellCommandPrefix = root.query.startsWith(Config.options.search.prefix.shellCommand);
         const startsWithWebSearchPrefix = root.query.startsWith(Config.options.search.prefix.webSearch);
-        if (startsWithNumber || startsWithMathPrefix) {
+        if (mathResultObject && (startsWithNumber || startsWithMathPrefix)) {
             result.push(mathResultObject);
-        } else if (startsWithShellCommandPrefix) {
+        } else if (commandResultObject && startsWithShellCommandPrefix) {
             result.push(commandResultObject);
-        } else if (startsWithWebSearchPrefix) {
+        } else if (webSearchResultObject && startsWithWebSearchPrefix) {
             result.push(webSearchResultObject);
         }
 
         //////////////// Apps //////////////////
         result = result.concat(appResultObjects);
+        ////////////// Windows /////////////////
+        result = result.concat(windowResultObjects);
         ////////////// Settings ////////////////
         result = result.concat(settingsResults);
         ////////// Launcher actions ////////////
@@ -485,11 +519,11 @@ Singleton {
 
         /// Math result, command, web search ///
         if (Config.options.search.prefix.showDefaultActionsWithoutPrefix) {
-            if (!startsWithShellCommandPrefix)
+            if (commandResultObject && !startsWithShellCommandPrefix)
                 result.push(commandResultObject);
-            if (!startsWithNumber && !startsWithMathPrefix)
+            if (mathResultObject && !startsWithNumber && !startsWithMathPrefix)
                 result.push(mathResultObject);
-            if (!startsWithWebSearchPrefix)
+            if (webSearchResultObject && !startsWithWebSearchPrefix)
                 result.push(webSearchResultObject);
         }
         
